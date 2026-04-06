@@ -4,6 +4,6 @@
   "base_path": "/datastore1/svc_epremo/fill_log",
   "remote_host": "envy.akamai.com",
   "mcm_machines_file": "~/product_metrics/competitive/mcm_machines.20260405.csv",
-  "intermediate_file_6col": "~/product_metrics/competitive/crypto_latency_output/crypto_latency_all.csv",
-  "final_file_8col": "~/product_metrics/competitive/crypto_latency_output/crypto_latency_enriched.csv"
+  "intermediate_file_6col": "~/product_metrics/competitive/agents/crypto/crypto_latency_output/crypto_latency_all.csv",
+  "final_file_8col": "~/product_metrics/competitive/agents/crypto/crypto_latency_output/crypto_latency_enriched.csv"
 }

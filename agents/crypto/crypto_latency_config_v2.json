@@ -1,0 +1,11 @@
+{
+  "date_directories": "20260403,20260404,20260405",
+  "description": "Comma-separated list of target date subdirectories in YYYYMMDD format",
+  "base_path": "/datastore1/svc_epremo/fill_log",
+  "remote_host": "envy.akamai.com",
+  "query2_vm": "bos-lvu2g.bos01.corp.akamai.com",
+  "query2_host": "freeflow.dev.query.akadns.net",
+  "mcm_machines_file": "~/product_metrics/competitive/agents/crypto/crypto_latency_output/mcm_machines_generated.csv",
+  "intermediate_file_6col": "~/product_metrics/competitive/agents/crypto/crypto_latency_output/crypto_latency_all.csv",
+  "final_file_8col": "~/product_metrics/competitive/agents/crypto/crypto_latency_output/crypto_latency_enriched.csv"
+}
