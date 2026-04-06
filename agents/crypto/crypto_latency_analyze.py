@@ -64,14 +64,71 @@ def enrich(input_file, output_file, ghost_metro_map, crypto_metro_map):
     print(f"Enriched file written to {output_file} ({enriched_count} rows)")
 
 
-def pearson(s):
-    n = s['total']
-    num = n * s['sum_xy'] - s['sum_x'] * s['sum_y']
-    den_x = n * s['sum_x2'] - s['sum_x'] ** 2
-    den_y = n * s['sum_y2'] - s['sum_y'] ** 2
+def pearson_from_sums(n, sx, sy, sxy, sx2, sy2):
+    num = n * sxy - sx * sy
+    den_x = n * sx2 - sx ** 2
+    den_y = n * sy2 - sy ** 2
     if den_x <= 0 or den_y <= 0:
+        return None
+    return max(-1.0, min(1.0, num / (den_x * den_y) ** 0.5))
+
+
+def pearson(s):
+    r = pearson_from_sums(s['total'], s['sum_x'], s['sum_y'], s['sum_xy'], s['sum_x2'], s['sum_y2'])
+    return f"{r:.3f}" if r is not None else 'N/A'
+
+
+def r_squared(s):
+    r = pearson_from_sums(s['total'], s['sum_x'], s['sum_y'], s['sum_xy'], s['sum_x2'], s['sum_y2'])
+    return f"{r**2:.3f}" if r is not None else 'N/A'
+
+
+def slope_beta(s):
+    n = s['total']
+    denom = n * s['sum_x2'] - s['sum_x'] ** 2
+    if denom <= 0:
         return 'N/A'
-    return f"{num / (den_x * den_y) ** 0.5:.3f}"
+    b = (n * s['sum_xy'] - s['sum_x'] * s['sum_y']) / denom
+    return f"{b:.3f}"
+
+
+def pearson_same_metro(s):
+    n = s['sm_n']
+    if n < 2:
+        return 'N/A'
+    r = pearson_from_sums(n, s['sm_sum_x'], s['sm_sum_y'], s['sm_sum_xy'], s['sm_sum_x2'], s['sm_sum_y2'])
+    return f"{r:.3f}" if r is not None else 'N/A'
+
+
+def spearman_r(pairs):
+    n = len(pairs)
+    if n < 2:
+        return 'N/A'
+
+    def rank_values(vals):
+        sorted_idx = sorted(range(n), key=lambda i: vals[i])
+        ranks = [0.0] * n
+        i = 0
+        while i < n:
+            j = i
+            while j < n - 1 and vals[sorted_idx[j + 1]] == vals[sorted_idx[j]]:
+                j += 1
+            avg_rank = (i + j) / 2.0 + 1.0
+            for k in range(i, j + 1):
+                ranks[sorted_idx[k]] = avg_rank
+            i = j + 1
+        return ranks
+
+    ssls = [p[0] for p in pairs]
+    keys = [p[1] for p in pairs]
+    r_ssl = rank_values(ssls)
+    r_key = rank_values(keys)
+    sx = sum(r_ssl); sy = sum(r_key)
+    sxy = sum(r_ssl[i] * r_key[i] for i in range(n))
+    sx2 = sum(r * r for r in r_ssl)
+    sy2 = sum(r * r for r in r_key)
+    r = pearson_from_sums(n, sx, sy, sxy, sx2, sy2)
+    return f"{r:.3f}" if r is not None else 'N/A'
 
 
 def analyze(output_file):
@@ -84,7 +141,13 @@ def analyze(output_file):
         'ssl_gt30_key_lt10': 0,
         'ssl_gt50_key_lt10': 0,
         'ssl_gt50_key_lt20': 0,
+        # full-population accumulators (Pearson, R², slope)
         'sum_x': 0.0, 'sum_y': 0.0, 'sum_xy': 0.0, 'sum_x2': 0.0, 'sum_y2': 0.0,
+        # same-metro stratum accumulators
+        'sm_n': 0, 'sm_sum_x': 0.0, 'sm_sum_y': 0.0,
+        'sm_sum_xy': 0.0, 'sm_sum_x2': 0.0, 'sm_sum_y2': 0.0,
+        # all pairs for Spearman
+        'pairs': [],
     })
 
     with open(output_file, newline='') as f:
@@ -115,6 +178,14 @@ def analyze(output_file):
             s['sum_xy'] += ssl * key
             s['sum_x2'] += ssl * ssl
             s['sum_y2'] += key * key
+            s['pairs'].append((ssl, key))
+            if row['ghost_metro'] and row['crypto_metro'] and row['ghost_metro'] == row['crypto_metro']:
+                s['sm_n']      += 1
+                s['sm_sum_x']  += ssl
+                s['sm_sum_y']  += key
+                s['sm_sum_xy'] += ssl * key
+                s['sm_sum_x2'] += ssl * ssl
+                s['sm_sum_y2'] += key * key
 
     def pct(n, total):
         return f"{100*n/total:.1f}%" if total > 0 else "N/A"
@@ -123,7 +194,8 @@ def analyze(output_file):
     header = (
         f"{'country':<10} {'n':>7} {'ssl>20':>7} {'ssl>30':>7} {'ssl>50':>7} "
         f"{'key>10':>7} {'key>20':>7} {'key>30':>7} {'diff_metro':>10} "
-        f"{'ssl>20&key<10':>13} {'ssl>30&key<10':>13} {'ssl>50&key<10':>13} {'ssl>50&key<20':>13} {'pearson_r':>9}"
+        f"{'ssl>20&key<10':>13} {'ssl>30&key<10':>13} {'ssl>50&key<10':>13} {'ssl>50&key<20':>13} "
+        f"{'pearson_r':>9} {'r2':>6} {'slope':>7} {'r_samemetro':>11} {'spearman_r':>10}"
     )
     print(header)
     print('-' * len(header))
@@ -134,7 +206,9 @@ def analyze(output_file):
             f"{country:<10} {n:>7} {pct(s['ssl_gt20'],n):>7} {pct(s['ssl_gt30'],n):>7} {pct(s['ssl_gt50'],n):>7} "
             f"{pct(s['key_gt10'],n):>7} {pct(s['key_gt20'],n):>7} {pct(s['key_gt30'],n):>7} {pct(s['diff_metro'],n):>10} "
             f"{pct(s['ssl_gt20_key_lt10'],n):>13} {pct(s['ssl_gt30_key_lt10'],n):>13} "
-            f"{pct(s['ssl_gt50_key_lt10'],n):>13} {pct(s['ssl_gt50_key_lt20'],n):>13} {pearson(s):>9}"
+            f"{pct(s['ssl_gt50_key_lt10'],n):>13} {pct(s['ssl_gt50_key_lt20'],n):>13} "
+            f"{pearson(s):>9} {r_squared(s):>6} {slope_beta(s):>7} "
+            f"{pearson_same_metro(s):>11} {spearman_r(s['pairs']):>10}"
         )
     return stats
 
@@ -146,7 +220,7 @@ def write_tsv(stats, tsv_file):
     columns = ['country', 'n', 'ssl>20', 'ssl>30', 'ssl>50',
                'key>10', 'key>20', 'key>30', 'diff_metro',
                'ssl>20&key<10', 'ssl>30&key<10', 'ssl>50&key<10', 'ssl>50&key<20',
-               'pearson_r']
+               'pearson_r', 'r2', 'slope', 'r_same_metro', 'spearman_r']
 
     with open(tsv_file, 'w', newline='') as f:
         writer = csv.writer(f, delimiter='\t')
@@ -161,7 +235,8 @@ def write_tsv(stats, tsv_file):
                 pct(s['diff_metro'], n),
                 pct(s['ssl_gt20_key_lt10'], n), pct(s['ssl_gt30_key_lt10'], n),
                 pct(s['ssl_gt50_key_lt10'], n), pct(s['ssl_gt50_key_lt20'], n),
-                pearson(s),
+                pearson(s), r_squared(s), slope_beta(s),
+                pearson_same_metro(s), spearman_r(s['pairs']),
             ])
 
 
