@@ -1,0 +1,6 @@
+crypto_latency_output/
+mcm_machines*.csv
+*.pyc
+__pycache__/
+.DS_Store
+/tmp/
