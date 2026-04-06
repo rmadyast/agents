@@ -64,6 +64,16 @@ def enrich(input_file, output_file, ghost_metro_map, crypto_metro_map):
     print(f"Enriched file written to {output_file} ({enriched_count} rows)")
 
 
+def pearson(s):
+    n = s['total']
+    num = n * s['sum_xy'] - s['sum_x'] * s['sum_y']
+    den_x = n * s['sum_x2'] - s['sum_x'] ** 2
+    den_y = n * s['sum_y2'] - s['sum_y'] ** 2
+    if den_x <= 0 or den_y <= 0:
+        return 'N/A'
+    return f"{num / (den_x * den_y) ** 0.5:.3f}"
+
+
 def analyze(output_file):
     stats = defaultdict(lambda: {
         'total': 0,
@@ -74,6 +84,7 @@ def analyze(output_file):
         'ssl_gt30_key_lt10': 0,
         'ssl_gt50_key_lt10': 0,
         'ssl_gt50_key_lt20': 0,
+        'sum_x': 0.0, 'sum_y': 0.0, 'sum_xy': 0.0, 'sum_x2': 0.0, 'sum_y2': 0.0,
     })
 
     with open(output_file, newline='') as f:
@@ -99,6 +110,11 @@ def analyze(output_file):
             if ssl > 30 and key < 10:  s['ssl_gt30_key_lt10'] += 1
             if ssl > 50 and key < 10:  s['ssl_gt50_key_lt10'] += 1
             if ssl > 50 and key < 20:  s['ssl_gt50_key_lt20'] += 1
+            s['sum_x']  += ssl
+            s['sum_y']  += key
+            s['sum_xy'] += ssl * key
+            s['sum_x2'] += ssl * ssl
+            s['sum_y2'] += key * key
 
     def pct(n, total):
         return f"{100*n/total:.1f}%" if total > 0 else "N/A"
@@ -107,7 +123,7 @@ def analyze(output_file):
     header = (
         f"{'country':<10} {'n':>7} {'ssl>20':>7} {'ssl>30':>7} {'ssl>50':>7} "
         f"{'key>10':>7} {'key>20':>7} {'key>30':>7} {'diff_metro':>10} "
-        f"{'ssl>20&key<10':>13} {'ssl>30&key<10':>13} {'ssl>50&key<10':>13} {'ssl>50&key<20':>13}"
+        f"{'ssl>20&key<10':>13} {'ssl>30&key<10':>13} {'ssl>50&key<10':>13} {'ssl>50&key<20':>13} {'pearson_r':>9}"
     )
     print(header)
     print('-' * len(header))
@@ -118,7 +134,7 @@ def analyze(output_file):
             f"{country:<10} {n:>7} {pct(s['ssl_gt20'],n):>7} {pct(s['ssl_gt30'],n):>7} {pct(s['ssl_gt50'],n):>7} "
             f"{pct(s['key_gt10'],n):>7} {pct(s['key_gt20'],n):>7} {pct(s['key_gt30'],n):>7} {pct(s['diff_metro'],n):>10} "
             f"{pct(s['ssl_gt20_key_lt10'],n):>13} {pct(s['ssl_gt30_key_lt10'],n):>13} "
-            f"{pct(s['ssl_gt50_key_lt10'],n):>13} {pct(s['ssl_gt50_key_lt20'],n):>13}"
+            f"{pct(s['ssl_gt50_key_lt10'],n):>13} {pct(s['ssl_gt50_key_lt20'],n):>13} {pearson(s):>9}"
         )
     return stats
 
@@ -129,7 +145,8 @@ def write_tsv(stats, tsv_file):
 
     columns = ['country', 'n', 'ssl>20', 'ssl>30', 'ssl>50',
                'key>10', 'key>20', 'key>30', 'diff_metro',
-               'ssl>20&key<10', 'ssl>30&key<10', 'ssl>50&key<10', 'ssl>50&key<20']
+               'ssl>20&key<10', 'ssl>30&key<10', 'ssl>50&key<10', 'ssl>50&key<20',
+               'pearson_r']
 
     with open(tsv_file, 'w', newline='') as f:
         writer = csv.writer(f, delimiter='\t')
@@ -144,6 +161,7 @@ def write_tsv(stats, tsv_file):
                 pct(s['diff_metro'], n),
                 pct(s['ssl_gt20_key_lt10'], n), pct(s['ssl_gt30_key_lt10'], n),
                 pct(s['ssl_gt50_key_lt10'], n), pct(s['ssl_gt50_key_lt20'], n),
+                pearson(s),
             ])
 
 
