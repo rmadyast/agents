@@ -162,9 +162,13 @@ test_country,competitor,ghostip,cryptoip,ssltime,keysign_lat,ghost_metro,crypto_
 For each `test_country`, compute the following metrics:
 
 #### Latency Thresholds
+- p50 of `ssltime`
+- p95 of `ssltime`
 - Percent of `ssltime` > 20ms
 - Percent of `ssltime` > 30ms
 - Percent of `ssltime` > 50ms
+- p50 of `keysign_lat`
+- p95 of `keysign_lat`
 - Percent of `keysign_lat` > 10ms
 - Percent of `keysign_lat` > 20ms
 - Percent of `keysign_lat` > 30ms

@@ -64,6 +64,23 @@ def enrich(input_file, output_file, ghost_metro_map, crypto_metro_map):
     print(f"Enriched file written to {output_file} ({enriched_count} rows)")
 
 
+def percentile(sorted_vals, p):
+    """Linear-interpolation percentile on a pre-sorted list."""
+    n = len(sorted_vals)
+    if n == 0:
+        return None
+    idx = (p / 100.0) * (n - 1)
+    lo = int(idx)
+    hi = lo + 1
+    if hi >= n:
+        return sorted_vals[lo]
+    return sorted_vals[lo] + (idx - lo) * (sorted_vals[hi] - sorted_vals[lo])
+
+
+def fmt_ms(v):
+    return f"{v:.1f}" if v is not None else 'N/A'
+
+
 def pearson_from_sums(n, sx, sy, sxy, sx2, sy2):
     num = n * sxy - sx * sy
     den_x = n * sx2 - sx ** 2
@@ -146,8 +163,10 @@ def analyze(output_file):
         # same-metro stratum accumulators
         'sm_n': 0, 'sm_sum_x': 0.0, 'sm_sum_y': 0.0,
         'sm_sum_xy': 0.0, 'sm_sum_x2': 0.0, 'sm_sum_y2': 0.0,
-        # all pairs for Spearman
+        # all pairs for Spearman + percentiles
         'pairs': [],
+        'ssl_vals': [],
+        'key_vals': [],
     })
 
     with open(output_file, newline='') as f:
@@ -179,6 +198,8 @@ def analyze(output_file):
             s['sum_x2'] += ssl * ssl
             s['sum_y2'] += key * key
             s['pairs'].append((ssl, key))
+            s['ssl_vals'].append(ssl)
+            s['key_vals'].append(key)
             if row['ghost_metro'] and row['crypto_metro'] and row['ghost_metro'] == row['crypto_metro']:
                 s['sm_n']      += 1
                 s['sm_sum_x']  += ssl
@@ -192,8 +213,8 @@ def analyze(output_file):
 
     print()
     header = (
-        f"{'country':<10} {'n':>7} {'ssl>20':>7} {'ssl>30':>7} {'ssl>50':>7} "
-        f"{'key>10':>7} {'key>20':>7} {'key>30':>7} {'diff_metro':>10} "
+        f"{'country':<10} {'n':>7} {'ssl_p50':>8} {'ssl_p95':>8} {'ssl>20':>7} {'ssl>30':>7} {'ssl>50':>7} "
+        f"{'key_p50':>8} {'key_p95':>8} {'key>10':>7} {'key>20':>7} {'key>30':>7} {'diff_metro':>10} "
         f"{'ssl>20&key<10':>13} {'ssl>30&key<10':>13} {'ssl>50&key<10':>13} {'ssl>50&key<20':>13} "
         f"{'pearson_r':>9} {'r2':>6} {'slope':>7} {'r_samemetro':>11} {'spearman_r':>10}"
     )
@@ -202,9 +223,15 @@ def analyze(output_file):
     for country in sorted(stats.keys()):
         s = stats[country]
         n = s['total']
+        ssl_s = sorted(s['ssl_vals'])
+        key_s = sorted(s['key_vals'])
+        sp50 = fmt_ms(percentile(ssl_s, 50))
+        sp95 = fmt_ms(percentile(ssl_s, 95))
+        kp50 = fmt_ms(percentile(key_s, 50))
+        kp95 = fmt_ms(percentile(key_s, 95))
         print(
-            f"{country:<10} {n:>7} {pct(s['ssl_gt20'],n):>7} {pct(s['ssl_gt30'],n):>7} {pct(s['ssl_gt50'],n):>7} "
-            f"{pct(s['key_gt10'],n):>7} {pct(s['key_gt20'],n):>7} {pct(s['key_gt30'],n):>7} {pct(s['diff_metro'],n):>10} "
+            f"{country:<10} {n:>7} {sp50:>8} {sp95:>8} {pct(s['ssl_gt20'],n):>7} {pct(s['ssl_gt30'],n):>7} {pct(s['ssl_gt50'],n):>7} "
+            f"{kp50:>8} {kp95:>8} {pct(s['key_gt10'],n):>7} {pct(s['key_gt20'],n):>7} {pct(s['key_gt30'],n):>7} {pct(s['diff_metro'],n):>10} "
             f"{pct(s['ssl_gt20_key_lt10'],n):>13} {pct(s['ssl_gt30_key_lt10'],n):>13} "
             f"{pct(s['ssl_gt50_key_lt10'],n):>13} {pct(s['ssl_gt50_key_lt20'],n):>13} "
             f"{pearson(s):>9} {r_squared(s):>6} {slope_beta(s):>7} "
@@ -217,8 +244,10 @@ def write_tsv(stats, tsv_file):
     def pct(n, total):
         return f"{100*n/total:.1f}%" if total > 0 else "N/A"
 
-    columns = ['country', 'n', 'ssl>20', 'ssl>30', 'ssl>50',
-               'key>10', 'key>20', 'key>30', 'diff_metro',
+    columns = ['country', 'n',
+               'ssl_p50', 'ssl_p95', 'ssl>20', 'ssl>30', 'ssl>50',
+               'key_p50', 'key_p95', 'key>10', 'key>20', 'key>30',
+               'diff_metro',
                'ssl>20&key<10', 'ssl>30&key<10', 'ssl>50&key<10', 'ssl>50&key<20',
                'pearson_r', 'r2', 'slope', 'r_same_metro', 'spearman_r']
 
@@ -228,9 +257,13 @@ def write_tsv(stats, tsv_file):
         for country in sorted(stats.keys()):
             s = stats[country]
             n = s['total']
+            ssl_s = sorted(s['ssl_vals'])
+            key_s = sorted(s['key_vals'])
             writer.writerow([
                 country, n,
+                fmt_ms(percentile(ssl_s, 50)), fmt_ms(percentile(ssl_s, 95)),
                 pct(s['ssl_gt20'], n), pct(s['ssl_gt30'], n), pct(s['ssl_gt50'], n),
+                fmt_ms(percentile(key_s, 50)), fmt_ms(percentile(key_s, 95)),
                 pct(s['key_gt10'], n), pct(s['key_gt20'], n), pct(s['key_gt30'], n),
                 pct(s['diff_metro'], n),
                 pct(s['ssl_gt20_key_lt10'], n), pct(s['ssl_gt30_key_lt10'], n),
@@ -257,9 +290,11 @@ def main():
     print("\nStep 8: Analysis and Statistics")
     stats = analyze(output_file)
 
-    # Write TSV output to same directory as the output files
+    # Write TSV output — use stats_file from config if present, else default name
     output_dir = os.path.dirname(output_file)
-    tsv_file = os.path.join(output_dir, "crypto_latency_stats.tsv")
+    tsv_file = os.path.expanduser(
+        config.get('stats_file', os.path.join(output_dir, "crypto_latency_stats.tsv"))
+    )
     write_tsv(stats, tsv_file)
     print(f"\nStats table written to {tsv_file}")
 
