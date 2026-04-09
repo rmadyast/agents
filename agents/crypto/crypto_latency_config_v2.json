@@ -1,5 +1,5 @@
 {
-  "date_directories": "20260403,20260404,20260405,20260406",
+  "date_directories": "20260403,20260404,20260405,20260406,20260407",
   "description": "Comma-separated list of target date subdirectories in YYYYMMDD format",
   "base_path": "/datastore1/svc_epremo/fill_log",
   "remote_host": "envy.akamai.com",

@@ -184,6 +184,49 @@ For each `test_country`, compute the following metrics:
 - Percent of cases where `ssltime` > 50ms AND `keysign_lat` < 10ms
 - Percent of cases where `ssltime` > 50ms AND `keysign_lat` < 20ms
 
+### Step 6: Region-Level Deep-Dive Analyses
+
+In addition to country-level TSV output, v2 supports region-level investigations using `regionname` from the generated MCM file.
+
+#### Script A — Strong Correlation by Country + Region
+
+**Script:** `region_strong_correlation_group.py`
+
+Purpose:
+- Identify country-region pairs where SSL and keysign are tightly coupled.
+
+Method:
+- Join enriched rows to freeflow `regionname` via `ghostip -> serviceip` from `mcm_machines_generated`.
+- Compute Pearson correlation for each `(country, regionname)` group.
+- Filter by:
+    - `n >= 30`
+    - `pearson_r >= 0.5`
+- Output grouped by country.
+
+Use this when you want to isolate metros where keysign is likely a direct driver of SSL latency.
+
+#### Script B — High SSL but Low Keysign by Region
+
+**Script:** `region_ssl_high_key_low.py`
+
+Purpose:
+- Find regions where SSL is high even though keysign is not high.
+
+Method:
+- Same `regionname` mapping as above.
+- Computes two views:
+    - **STRICT:** `ssl_p95 > 50ms` and `key_p95 <= 10ms` (with `n >= 30`)
+    - **BROAD:** `ssl_p50 > 20ms` and `key_p50 <= 10ms` (with `n >= 30`)
+
+Use this to identify non-keysign bottlenecks (routing, TLS path, or ghost-side behavior).
+
+#### Example Commands
+
+```bash
+python3 region_strong_correlation_group.py
+python3 region_ssl_high_key_low.py
+```
+
 ## Output Files
 
 | File | Description |
